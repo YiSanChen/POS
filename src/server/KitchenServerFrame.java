@@ -13,7 +13,6 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.LinkedHashMap; 
 
-
 public class KitchenServerFrame extends JFrame {
 
     private JPanel pendingPanel;   
@@ -47,7 +46,7 @@ public class KitchenServerFrame extends JFrame {
 
         //中右已完成區
         completedPanel = new JPanel();
-        completedPanel.setLayout(new BoxLayout(completedPanel, BoxLayout.Y_AXIS));
+        completedPanel.setLayout(new BoxLayout(completedPanel, BoxLayout.Y_AXIS)); 
         JScrollPane scrollCompleted = new JScrollPane(completedPanel);
         scrollCompleted.setBorder(BorderFactory.createTitledBorder(
                 null, "已出餐紀錄 (Completed)", TitledBorder.CENTER, TitledBorder.TOP, 
@@ -81,7 +80,9 @@ public class KitchenServerFrame extends JFrame {
                 System.out.println("Server 啟動，Port: " + PORT);
                 while (true) {
                     Socket clientSocket = serverSocket.accept();//持續等待前台聯線
-                    handleClient(clientSocket);
+                    // ⭐ 修改重點 1: 為每個連線開啟獨立執行緒
+                    // 如果不開執行緒，當長連線進來時，主迴圈會被卡住，導致無法接收其他訂單
+                    new Thread(() -> handleClient(clientSocket)).start();
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -89,28 +90,48 @@ public class KitchenServerFrame extends JFrame {
         }).start();
     }
 
-    //成功連線後
+    //處理連線邏輯
     private void handleClient(Socket socket) {
         try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
             Object obj = ois.readObject();
 
             //判斷前台給的是訂單還是登入
             if (obj instanceof Order) {
-            	//是訂單，就加入中左Pending區
+                //是訂單，就加入中左Pending區
                 Order order = (Order) obj;
                 SwingUtilities.invokeLater(() -> addOrderToPending(order));
+                // 訂單處理完後，方法結束，Socket 會自動關閉 (短連線)
             } 
             else if (obj instanceof String) {
-            	//是登入訊號，更改北邊狀態列為後臺已連線
                 String msg = (String) obj;
                 if ("LOGIN".equals(msg)) {
+                    //是登入訊號，更改北邊狀態列為後臺已連線
                     SwingUtilities.invokeLater(() -> {
-                        lblStatus.setText("前台 POS 已連線");
+                        lblStatus.setText("🟢 前台 POS 已連線");
                         lblStatus.setForeground(Color.GREEN);
                     });
+
+                    // ⭐ 修改重點 2: 進入長連線監聽迴圈
+                    // 這裡是一個「死循環」，目的是卡住這條連線，偵測對方何時斷開
+                    try {
+                        while (true) {
+                            // 嘗試讀取物件。
+                            // 因為 Client 登入後不會再送東西，這裡會一直阻塞 (Block) 等待。
+                            // 當 Client 關閉程式 (斷線) 時，這裡會拋出 EOFException 或 SocketException。
+                            ois.readObject(); 
+                        }
+                    } catch (Exception e) {
+                        // ⭐ 修改重點 3: 捕捉到異常，代表斷線，更新 UI 回紅色
+                        SwingUtilities.invokeLater(() -> {
+                            lblStatus.setText("🔴 等待前台連線... (已斷線)");
+                            lblStatus.setForeground(Color.RED);
+                        });
+                        System.out.println("前台已離線");
+                    }
                 }
             }
         } catch (Exception e) {
+            // 這裡處理的是還沒建立長連線就出錯的情況
             e.printStackTrace();
         }
     }
