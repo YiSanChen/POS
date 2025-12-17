@@ -1,10 +1,3 @@
-這是一份專業且結構完整的 **README.md** 文件。
-
-這份文件的設計目的是讓你的專案在 GitHub 或繳交作業時看起來非常專業。它強調了技術亮點（Socket、多執行緒），同時也誠實說明了專案的限制（如手動排版），非常適合作為學生期末專案的說明檔。
-
-你可以直接複製以下內容存成 `README.md`。
-
----
 
 # 🍽️ Distributed Restaurant POS System (Java Socket)
 
